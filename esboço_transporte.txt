@@ -1,0 +1,35 @@
+tablet;
+[inicio + numero_de_argumentos + função + arg_1 + ... + arg_n + checksum]+[ACK]
+
+carro ACK;
+[um byte correspondente ao sucesso] = 6 decimal
+
+carro NACK;
+[um byte correspondente a erro] = 21 decimal
+
+funções;
+10 - executar comandos de movimentação(sem argumentos)
+11 - movimentação simples(F = frente(70),B = ré(66), R = direita(82), L = esquerda(76))
+12 - movimenta as roda um numero x de passos[(direita,esquerda)+(direta,esquerda)...]
+13 - movimenta ambas as rodas concorrentemente um numero x de passos(args negativos para esquerda)
+14 - movimenta ambas as rodas concordantemente um numero x de passos(args negativos para trás)
+
+exemplo;
+Enviar um quadro afim de mover o carro para frente 2 vezes, virar para direita,
+frente mais 2 vezes, virar para esquerda 2 vezes.
+
+[2+8+11+checksum1]+[ACK]+[70+70+82+70+70+76+76+checksum2]+[ACK]
+
+/************************************************************************************************************************/
+
+Rádio;
+[inicio(0x01) + endereço do mestre + função + arg_1 + ... + arg_n]+[ACK]
+[continuação(0x02) + endereço do mestre + função + arg_1 + ... + arg_n]+[ACK]
+[fim(0x03) + endereço do mestre + função + arg_1 + ... + arg_n]+[ACK]
+
+
+
+
+
+
+
