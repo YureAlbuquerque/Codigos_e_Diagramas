@@ -14,19 +14,22 @@
 class Radio{
 public:
   char myAddress[5];
-  Radio(uint8_t cePIN,uint8_t csnPIN,uint8_t CH,char address[]);
+  uint8_t fnc;
+  uint8_t data[32];
+  Radio(uint8_t cePIN,uint8_t csnPIN,uint8_t CH,char *address);
   boolean available();
   uint8_t writePacket(uint8_t *remoteAddress,uint8_t fnc,uint8_t *array,uint8_t len);
-  uint8_t readPacket(uint8_t *msg);
+  uint8_t writePacket(uint8_t *remoteAddress,uint8_t fnc);
+  uint8_t readPacket();
 
 };
 /**********************************************************************************************************************************************/
 Radio::Radio(uint8_t cePIN,uint8_t csnPIN,uint8_t CH,char Myaddress[]){
-  ////Serial.print(Myaddress);
+  //Serial.print(Myaddress);
   for(uint8_t i=0;i<5;i++){
     myAddress[i] = Myaddress[i];   
   }
-  ////Serial.println((char*)myAddress);
+  //Serial.println((char*)myAddress);
   Mirf.cePin = cePIN;
   Mirf.csnPin = csnPIN;
   Mirf.spi = &MirfHardwareSpi;
@@ -46,47 +49,92 @@ boolean Radio::available(){
 uint8_t Radio::writePacket(uint8_t *remoteAddress,uint8_t fnc,uint8_t *array,uint8_t len){//mensagem com no maximo 25 caracteres
   Mirf.setTADDR((byte *)remoteAddress);
   uint8_t err = 0;
-  uint8_t data[32];
-  uint8_t part = 0;
-  uint8_t index = 0;
-  part = len/25;
-  if(len%25)part+1;
+  uint8_t msg[32];
   while(1){
     /***************************/
     //limpa mensagem
     for(uint8_t i=0;i<32;i++){
-      data[i] = 0;
+      msg[i] = 0;
     }   
-   /***************************/ 
-    //indica que é uma mensagem de inicialização, ou seja,apos recebe-la o RX deve esperar mais algum(as) mensagens.
-    if(part > 0)data[0] = 1;
-    //indica que é uma mensagem de continuação, ou seja,o RX ja recebeu uma de inicialização e deve esperar mais algum(as) mensagens.
-    if(index > 0 && part > 0)data[0] = 2;
-    //indica que é uma mensagem de finalização, ou seja,apos recebe-la o RX deve executar as instruções imediatamente.
-    if(len < 25 || part == 1)data[0] = 3;
-    part--;
+    /***************************/
+    //byte de inicio
+    msg[0] = 2;
     //endereço
     for(uint8_t i=0;i<5;i++){
-      data[i+1] = myAddress[i];
+      msg[i+1] = myAddress[i];
     }
     //função
-    data[6] = fnc;
+    msg[6] = fnc;
+
     //acressente o array a mensagem 
-    for(uint8_t i=0;i<len;i++){
-      data[i+7] = *(array+i);
+    for(uint8_t i=0; i<len; i++){
+      msg[i+7] = *(array+i);
     }
-     Mirf.send((uint8_t*)data);//Envia a mensagem.
+
+    Mirf.send((uint8_t*)msg);//Envia a mensagem.
     while(Mirf.isSending());//loop enquanto não terminar a transmissão.
-    
-    
+
     /********************************************************************************************************/
     //testes
     uint8_t Register = 0;
     Mirf.readRegister(OBSERVE_TX, &Register, sizeof(Register));//pegar o numero de tentativas
-      Serial.print("Tentativas de reenvio: ");
-      Serial.println(Register);
+    Serial.print("Tentativas de reenvio: ");
+    Serial.println(Register);
     /********************************************************************************************************/
-    
+
+    //ACK
+    for(uint8_t i=0; i<100; i++){//esperar 1 segundo pela resposta
+      if(Mirf.dataReady()){
+        Mirf.getData(data); 
+        break; 
+      }
+      delay(10);
+    }
+    if(data[0] == ACK){//mensagem recebida com sucesso
+      Serial.println("ACK recebido");
+      return 1;
+    }
+    //NACK
+    else{
+      Serial.println("NACK recebido ou nada:");
+      err++;
+    }
+    if(err >= TENTATIVAS)return 0;
+  }
+
+}
+/**********************************************************************************************************************************************/
+uint8_t Radio::writePacket(uint8_t *remoteAddress,uint8_t fnc){//mensagem com no maximo 25 caracteres
+  Mirf.setTADDR((byte *)remoteAddress);
+  uint8_t err = 0;
+  uint8_t msg[32];
+  while(1){
+    /***************************/
+    //limpa mensagem
+    for(uint8_t i=0;i<32;i++){
+      msg[i] = 0;
+    }   
+    /***************************/
+    //byte de inicio
+    msg[0] = 2;
+    //endereço
+    for(uint8_t i=0;i<5;i++){
+      msg[i+1] = myAddress[i];
+    }
+    //função
+    msg[6] = fnc;
+
+    Mirf.send((uint8_t*)msg);//Envia a mensagem.
+    while(Mirf.isSending());//loop enquanto não terminar a transmissão.
+
+    /********************************************************************************************************/
+    //testes
+    uint8_t Register = 0;
+    Mirf.readRegister(OBSERVE_TX, &Register, sizeof(Register));//pegar o numero de tentativas
+    Serial.print("Tentativas de reenvio: ");
+    Serial.println(Register);
+    /********************************************************************************************************/
+
     //ACK
     for(uint8_t i=0; i<100; i++){//esperar 1 segundo pela resposta
       if(Mirf.dataReady()){
@@ -106,42 +154,40 @@ uint8_t Radio::writePacket(uint8_t *remoteAddress,uint8_t fnc,uint8_t *array,uin
     }
     if(err >= TENTATIVAS)return 1;
   }
-  
+
 }
 /**********************************************************************************************************************************************/
-uint8_t Radio::readPacket(uint8_t *msg){
-  uint8_t data[32];
-  uint8_t length;
-  uint8_t fnc;
+uint8_t Radio::readPacket(){
+  uint8_t msg[32];
   uint8_t *remoteAddress = NULL;
 
-  Mirf.getData(data);
-  if(data[0]==1){
+  Mirf.getData(msg);
+  if(msg[0]==2){
     //Serial.println("Inicio do pacote ok");
-    length = data[6];
-    fnc = data[7];
+    fnc = msg[6];
     //pegue o endereço do "remetente"
-    remoteAddress = &data[1];
+    remoteAddress = &msg[1];
     //pegue a mensagem
-      for(uint8_t i=0;i<25;i++){
-        *(msg+i) = *(data+i+7);
-        }  
-      uint8_t aux[32];
-      aux[0]=ACK; 
-      uint8_t Register = 0;
-      //Mirf.readRegister(i, Register, sizeof(Register));
-      //resposta
-      Mirf.setTADDR((byte *)remoteAddress);
-      Mirf.send((uint8_t*)aux);
-      while(Mirf.isSending());
-      
-      Mirf.readRegister(OBSERVE_TX, &Register, sizeof(Register));//pegar o numero de tentativas
-      Serial.print("Tentativas de reenvio: ");
-      Serial.println(Register);
-      return 1;
+    for(uint8_t i=0;i<25;i++){
+      *(data+i) = *(msg+i+7);
+    }  
+    uint8_t aux[32];
+    aux[0]=ACK; 
+    //resposta
+    Mirf.setTADDR((byte *)remoteAddress);
+    Mirf.send((uint8_t*)aux);
+    while(Mirf.isSending());
+    
+    uint8_t Register = 0;
+    Mirf.readRegister(OBSERVE_TX, &Register, sizeof(Register));//pegar o numero de tentativas
+    Serial.print("Tentativas de reenvio: ");
+    Serial.println(Register);
+    return 1;
   }
   else return 0;
 }
 /**********************************************************************************************************************************************/
 /**********************************************************************************************************************************************/
 /**********************************************************************************************************************************************/
+
+

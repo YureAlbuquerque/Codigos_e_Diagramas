@@ -15,7 +15,8 @@ void loop(){
     Serial.read();
     Serial.print("Tamanho: ");
     Serial.println(sizeof(cmds));
-    radio.writePacket((uint8_t*)"radRX",11,cmds,sizeof(cmds));
+    uint8_t aux = radio.writePacket((uint8_t*)"carro",11,cmds,sizeof(cmds));
+    if(aux)radio.writePacket((uint8_t*)"carro",10);
     //radio.write((uint8_t*)"radRX",cmds,9);
     Serial.println("\t\t\tretorno!");
   }
